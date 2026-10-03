@@ -3,13 +3,12 @@ import {createHash} from 'node:crypto';
 import {resolve} from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {database,httpError} from './db.js';
-import {auth} from './auth.js';
 import {importColumns} from './domain.js';
 import {parseImportFile} from './import-parser.js';
 import {lookupInventory} from './inventory.js';
 import {verifyWorkflows} from './verify-workflows.js';
 
-export function createApp({store,transaction},credentials){
+export function createApp({store,transaction}){
   const app=express();app.disable('x-powered-by');app.set('trust proxy',1);
   app.use(express.json({limit:'20mb'}));
   app.use((req,res,next)=>{
@@ -21,16 +20,6 @@ export function createApp({store,transaction},credentials){
     next();
   });
   app.get('/api/health',async(req,res)=>res.json({ok:true,system:'w804',storage:'neon-postgresql',...(await store.metadata())}));
-  app.get('/api/auth',(req,res)=>res.json({editor:credentials.valid(req)}));
-  const attempts=new Map();
-  app.post('/api/auth/login',(req,res)=>{
-    const now=Date.now(),key=req.ip;const attempt=attempts.get(key)||{count:0,until:now+15*60*1000};
-    if(attempt.until<now){attempt.count=0;attempt.until=now+15*60*1000;}
-    if(attempt.count>=10)return res.status(429).json({error:'ลองเข้าสู่ระบบหลายครั้ง กรุณารอ 15 นาที'});
-    if(!credentials.passwordMatches(req.body?.password)){attempt.count++;attempts.set(key,attempt);return res.status(401).json({error:'รหัส ว804 ไม่ถูกต้อง'});}
-    attempts.delete(key);credentials.set(res,req.secure);res.json({editor:true});
-  });
-  app.post('/api/auth/logout',(req,res)=>{credentials.clear(res,req.secure);res.json({editor:false});});
   app.get('/api/w804',async(req,res)=>res.json({rows:await store.list(),...(await store.metadata())}));
   app.get('/api/inventory-lookup',async(req,res)=>res.json(await lookupInventory(String(req.query.number||'').trim())));
   app.get('/api/import/template',(req,res)=>{res.type('text/csv; charset=utf-8');res.set('Content-Disposition','attachment; filename="w804-master-template.csv"');res.send('\uFEFF'+importColumns.join(',')+'\r\n');});
@@ -41,7 +30,6 @@ export function createApp({store,transaction},credentials){
     const d=await store.document(req.params.id,req.params.kind);if(!d)throw httpError('ยังไม่มี PDF แนบในรายการ',404);
     res.type('application/pdf');res.set('Content-Disposition',`inline; filename="${req.params.kind}.pdf"; filename*=UTF-8''${encodeURIComponent(d.filename)}`);res.send(d.content);
   });
-  app.use('/api',(req,res,next)=>{if(!['GET','HEAD','OPTIONS'].includes(req.method)&&!credentials.valid(req))return res.status(401).json({error:'กรุณาเข้าสู่โหมดแก้ไข ว804 ก่อนบันทึก'});next();});
   app.post('/api/verify-workflows',async(req,res)=>{
     if(req.body?.confirmation!=='rollback-only')throw httpError('การตรวจระบบต้อง rollback ข้อมูลทดสอบ');
     res.json(await verifyWorkflows({store,transaction}));
@@ -76,7 +64,6 @@ export function createApp({store,transaction},credentials){
     const data=await importInput(req.body);
     res.json(await transaction(tx=>tx.importMaster(data.rows,data.filename,data.digest)));
   });
-  app.get('/api/audit',async(req,res)=>{if(!credentials.valid(req))throw httpError('กรุณาเข้าสู่โหมดแก้ไข',401);res.json({items:await store.audit()});});
   app.use('/api',(req,res)=>res.status(404).json({error:'ไม่พบเส้นทาง API'}));
   app.use(express.static(resolve(fileURLToPath(new URL('.',import.meta.url)),'dist')));
   app.use((err,req,res,next)=>{
@@ -88,7 +75,7 @@ export function createApp({store,transaction},credentials){
   return app;
 }
 if(process.argv[1]===fileURLToPath(import.meta.url)){
-  const db=database(process.env.W804_DATABASE_URL);const credentials=auth(process.env.W804_SESSION_SECRET,process.env.W804_EDITOR_PASSWORD);
-  const server=createApp(db,credentials).listen(Number(process.env.PORT)||3001,'0.0.0.0',()=>console.log('W804 listening with separate persistent database'));
+  const db=database(process.env.W804_DATABASE_URL);
+  const server=createApp(db).listen(Number(process.env.PORT)||3001,'0.0.0.0',()=>console.log('W804 listening with separate persistent database'));
   process.on('SIGTERM',()=>server.close(()=>db.pool.end().finally(()=>process.exit(0))));
 }
