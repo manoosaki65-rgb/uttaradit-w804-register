@@ -1,6 +1,6 @@
 # ทะเบียนและติดตาม ว804
 
-Separate application in the existing Codex workspace and existing repository branch `codex/w804-migration`. Source is only in `w804/`. No edits to the announcement application or the original AppDeploy deployment.
+Dedicated application in `manoosaki65-rgb/uttaradit-w804-register`, production branch `main`. Work continues in the existing Codex session. No edits to the announcement repository, service or database, or the original AppDeploy deployment.
 
 Reference app: https://w804-test-7lro75.v2.appdeploy.ai/ (read-only backup).
 
@@ -8,8 +8,8 @@ Reference app: https://w804-test-7lro75.v2.appdeploy.ai/ (read-only backup).
 
 `npm ci --include=dev`, configure dedicated `.env` following `.env.example`, `node --env-file=.env migrate.js`, `npm run build`, `node --env-file=.env server.js`.
 
-Render build: `cd w804 && npm ci --include=dev && npm run build`.
-Render start: `cd w804 && npm start`.
+Render region: Singapore. Build: `npm ci --include=dev && npm run build`.
+Render start: `npm start`. Health endpoint: `/api/health`.
 
 Schema changes are versioned in `migrations/` and executed through Drizzle using the unpooled URL. Run migrations explicitly; server startup never seeds or imports data. Neither pooled nor direct W804 URL may point at any database other than `w804_register`. The announcement app's `DATABASE_URL` variable is never used as a fallback.
 
@@ -17,7 +17,7 @@ Schema changes are versioned in `migrations/` and executed through Drizzle using
 
 Neon PostgreSQL database `w804_register`, separate role `w804_app`, separate editor password and session secret. Records, number counter, PDFs (bytea), audit and import batch history persist outside the Render filesystem. No SQLite, disk or browser storage fallback.
 
-001–036 are reserved as metadata without fabricating registry rows. First new issue is 037. Counter row locks, unique number constraints and request-key idempotency prevent duplicate numbers. Counter increment, new record, audit and optional Form 1 attachment commit together. Cancellation retains the row and number, and database triggers disallow changing numbers, deletion or restoring cancelled records.
+Real Master 001–036 has been imported from the user-supplied `MASTER_ว804_001-036.xlsx`: 34 active and 2 cancelled (035–036). First new issue is 037. Counter row locks, unique number constraints and request-key idempotency prevent duplicate numbers. Counter increment, new record, audit and optional Form 1 attachment commit together. Cancellation retains the row and number, and database triggers disallow changing numbers, deletion or restoring cancelled records. Do not reimport or seed on deployment.
 
 ## Scope
 
@@ -29,6 +29,6 @@ Original AI document extraction is not connected in this migration. Uploading/re
 
 `npm test`: domain, import format, Inventory mapping and HTTP permissions.
 
-`node --env-file=.env --test tests/*.test.js`: additionally exercises real PostgreSQL transactions, numbering, row locks, cancellation, PDF storage and Master safeguards. All fixture rows/audit/documents/import batches are rolled back; production retains zero fabricated records and next number 037. Do not run fixture tests against an existing real 035 Master row.
+`node --env-file=.env --test tests/*.test.js`: additionally exercises real PostgreSQL transactions, numbering, row locks, cancellation, PDF storage and Master safeguards. All fixture rows/audit/documents/import batches are rolled back; production retains the 36 real Master records and next number 037. The historical fixture import test skips when real Master 035 exists.
 
 See [imports/README.md](imports/README.md) for the Master import contract.
