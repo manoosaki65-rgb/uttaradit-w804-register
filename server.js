@@ -7,6 +7,7 @@ import {auth} from './auth.js';
 import {importColumns} from './domain.js';
 import {parseImportFile} from './import-parser.js';
 import {lookupInventory} from './inventory.js';
+import {verifyWorkflows} from './verify-workflows.js';
 
 export function createApp({store,transaction},credentials){
   const app=express();app.disable('x-powered-by');app.set('trust proxy',1);
@@ -41,6 +42,10 @@ export function createApp({store,transaction},credentials){
     res.type('application/pdf');res.set('Content-Disposition',`inline; filename="${req.params.kind}.pdf"; filename*=UTF-8''${encodeURIComponent(d.filename)}`);res.send(d.content);
   });
   app.use('/api',(req,res,next)=>{if(!['GET','HEAD','OPTIONS'].includes(req.method)&&!credentials.valid(req))return res.status(401).json({error:'กรุณาเข้าสู่โหมดแก้ไข ว804 ก่อนบันทึก'});next();});
+  app.post('/api/verify-workflows',async(req,res)=>{
+    if(req.body?.confirmation!=='rollback-only')throw httpError('การตรวจระบบต้อง rollback ข้อมูลทดสอบ');
+    res.json(await verifyWorkflows({store,transaction}));
+  });
   const documentInput=body=>{
     if(typeof body?.original!=='string'||body.original.length>16777216||!/^[A-Za-z0-9+/]*={0,2}$/.test(body.original))throw httpError('ข้อมูล PDF ไม่ถูกต้องหรือเกิน 12 MB');
     const filename=String(body.filename||'document.pdf').replace(/[\r\n\/\\]/g,'_').slice(0,180);
