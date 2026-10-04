@@ -1,7 +1,7 @@
 import {useEffect,useMemo,useState} from 'react';
 import {dateInDays,durationDays} from '../domain.js';
 
-type Row={id:string;number:number;no:string;date:string;unit:string;useLocation:string;item:string;amount:number;form2:string;inventoryNo:string;note:string;sourceEvidence:string;cancelled:boolean;cancelReason:string;form1Path?:string;form2Path?:string;version:number};
+type Row={id:string;number:number;no:string;date:string;unit:string;useLocation:string;item:string;amount:number;form2:string;inventoryNo:string;note:string;sourceEvidence:string;cancelled:boolean;cancelReason:string;form1Path?:string;form2Path?:string;version:number;legacyCode?:string;sourceOrder?:number};
 type Form={date:string;unit:string;useLocation:string;item:string;amount:string;form2:string;inventoryNo:string;note:string;sourceEvidence:string};
 type Register={rows:Row[];next:string;masterImported:number;masterExpected:number};
 type Preview={records:Row[];alreadyImported:string[];errors:Array<{row?:number;no?:string;error:string}>;canImport:boolean;sourceName:string};
@@ -46,7 +46,7 @@ export default function App(){
   const visible=rows.filter(r=>{
     const q=query.trim().toLocaleLowerCase('th');
     return (!q||['ว804/'+r.no,r.date,r.unit,r.useLocation,r.item,r.inventoryNo,r.note,r.cancelReason].join(' ').toLocaleLowerCase('th').includes(q))&&(!unitFilter||r.unit===unitFilter)&&(status==='all'||status==='cancelled'&&r.cancelled||status==='active'&&!r.cancelled||status==='pending'&&!r.cancelled&&dateInDays(r.form2)===null||status==='received'&&!r.cancelled&&dateInDays(r.form2)!==null);
-  }).sort((a,b)=>sort==='asc'?a.number-b.number:b.number-a.number);
+  }).sort((a,b)=>{const av=a.sourceOrder??a.number*10,bv=b.sourceOrder??b.number*10;return sort==='asc'?av-bv:bv-av;});
   const beginIssue=()=>{setForm(emptyForm());setEditRow(null);setPendingPdf(null);setRequestKey(crypto.randomUUID());setLookupMessage('');setQuickOpen(true);};
   const beginEdit=(r:Row)=>{setEditRow(r);setForm(toForm(r));setLookupMessage('');};
   const closeForm=()=>{setQuickOpen(false);setEditRow(null);setPendingPdf(null);setLookupMessage('');};
