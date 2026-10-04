@@ -13,8 +13,8 @@ export function guardedUrl(value) {
 export function newPool(value){return new pg.Pool({connectionString:guardedUrl(value),max:5,connectionTimeoutMillis:15000,idleTimeoutMillis:30000,application_name:'uttaradit-w804'});}
 export function httpError(message,status=400){return Object.assign(new Error(message),{status});}
 const mapping={date:'date',unit:'unit',useLocation:'use_location',item:'item',amount:'amount',form2:'form2',inventoryNo:'inventory_no',note:'note',sourceEvidence:'source_evidence'};
-const selection=sql.raw('id,number,date,unit,use_location AS "useLocation",item,amount,form2,inventory_no AS "inventoryNo",note,source_evidence AS "sourceEvidence",cancelled,cancel_reason AS "cancelReason",cancelled_at AS "cancelledAt",created_at AS "createdAt",updated_at AS "updatedAt",version');
-const resultRows=async(db,query)=>(await db.execute(query)).rows.map(r=>({...r,amount:r.amount===undefined?undefined:Number(r.amount),number:r.number===undefined?undefined:Number(r.number),...(r.number===undefined?{}:{no:formatNumber(r.number)})}));
+const selection=sql.raw('id,number,date,unit,use_location AS "useLocation",item,amount,form2,inventory_no AS "inventoryNo",note,source_evidence AS "sourceEvidence",cancelled,cancel_reason AS "cancelReason",cancelled_at AS "cancelledAt",created_at AS "createdAt",updated_at AS "updatedAt",version,legacy_code AS "legacyCode",source_order AS "sourceOrder"');
+const resultRows=async(db,query)=>(await db.execute(query)).rows.map(r=>({...r,amount:r.amount===undefined?undefined:Number(r.amount),number:r.number===undefined?undefined:Number(r.number),...(r.number===undefined?{}:{no:r.legacyCode||formatNumber(r.number),sourceOrder:r.sourceOrder===undefined?undefined:Number(r.sourceOrder)})}));
 
 export function createStore(db) {
   const run=query=>resultRows(db,query);
@@ -33,7 +33,7 @@ export function createStore(db) {
   return {
     get,byNumber,lock,
     list:async()=>{
-      const records=await run(sql`SELECT ${selection} FROM w804_records ORDER BY number DESC`);
+      const records=await run(sql`SELECT ${selection} FROM w804_records ORDER BY COALESCE(source_order,number*10) DESC`);
       const docs=(await db.execute(sql`SELECT record_id,kind FROM w804_documents`)).rows;
       return records.map(r=>({...r,form1Path:docs.some(d=>d.record_id===r.id&&d.kind==='form1')?`/api/w804/${r.id}/documents/form1`:'',form2Path:docs.some(d=>d.record_id===r.id&&d.kind==='form2')?`/api/w804/${r.id}/documents/form2`:''}));
     },
