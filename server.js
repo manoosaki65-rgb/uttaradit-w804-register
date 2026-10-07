@@ -35,20 +35,36 @@ export function createApp({store,transaction}){
     res.json(await verifyWorkflows({store,transaction}));
   });
   const documentInput=body=>{
-    if(typeof body?.original!=='string'||body.original.length>16777216||!/^[A-Za-z0-9+/]*={0,2}$/.test(body.original))throw httpError('ข้อมูล PDF ไม่ถูกต้องหรือเกิน 12 MB');
-    const filename=String(body.filename||'document.pdf').replace(/[\r\n\/\\]/g,'_').slice(0,180);
-    return {filename,content:Buffer.from(body.original,'base64')};
+    const filename=String(body?.filename||'').trim();
+    if(!filename)throw httpError('ไม่พบชื่อไฟล์ กรุณาเลือกไฟล์ PDF ใหม่');
+    if(!filename.toLowerCase().endsWith('.pdf'))throw httpError('แนบได้เฉพาะไฟล์ PDF เท่านั้น');
+    if(typeof body?.original!=='string'||!/^[A-Za-z0-9+/]*={0,2}$/.test(body.original))throw httpError('อ่านข้อมูลไฟล์ไม่ได้ กรุณาเลือก PDF ใหม่');
+    if(body.original.length>16777216)throw httpError('ไฟล์ PDF ใหญ่เกิน 12 MB กรุณาลดขนาดไฟล์แล้วลองใหม่');
+    const content=Buffer.from(body.original,'base64');
+    if(content.length===0)throw httpError('ไฟล์ PDF ว่างหรืออ่านไฟล์ไม่สำเร็จ กรุณาเลือกไฟล์ใหม่');
+    if(content.length>12*1024*1024)throw httpError('ไฟล์ PDF ใหญ่เกิน 12 MB กรุณาลดขนาดไฟล์แล้วลองใหม่');
+    if(content.subarray(0,5).toString('ascii')!=='%PDF-')throw httpError('ไฟล์ที่เลือกไม่ใช่ PDF ที่ถูกต้อง');
+    const safeFilename=filename.replace(/[\r\n\/\\]/g,'_').slice(0,180);
+    return {filename:safeFilename,content};
   };
   app.post('/api/w804',async(req,res)=>{
     if(!req.body?.record)throw httpError('ไม่พบข้อมูลรายการ');
-    const pdf=req.body.form1?documentInput(req.body.form1):null;
-    const row=await transaction(async tx=>{const row=await tx.issue(req.body.record,req.body.requestKey);if(pdf)await tx.attach(row.id,'form1',pdf.filename,pdf.content);return row;});
-    res.status(201).json({row});
+    // Always save the W804 record first. PDF attachment is deliberately a separate step
+    // so a bad/large file can never roll back or lose the newly issued W804 number.
+    const row=await transaction(tx=>tx.issue(req.body.record,req.body.requestKey));
+    res.status(201).json({row,attachmentDeferred:Boolean(req.body?.form1),message:'บันทึกรายการ ว804 แล้ว กรุณาแนบ Form 1/Form 2 จากรายการภายหลัง'});
   });
   app.put('/api/w804/:id',async(req,res)=>res.json({row:await transaction(tx=>tx.update(req.params.id,req.body))}));
   app.post('/api/w804/:id/cancel',async(req,res)=>res.json({row:await transaction(tx=>tx.cancel(req.params.id,req.body?.reason,req.body?.version))}));
   app.post('/api/w804/:id/documents/:kind',async(req,res)=>{
-    const pdf=documentInput(req.body);res.json(await transaction(tx=>tx.attach(req.params.id,req.params.kind,pdf.filename,pdf.content)));
+    if(!['form1','form2'].includes(req.params.kind))throw httpError('ประเภทเอกสารไม่ถูกต้อง เลือกได้เฉพาะ Form 1 หรือ Form 2');
+    const pdf=documentInput(req.body);
+    try{
+      res.json(await transaction(tx=>tx.attach(req.params.id,req.params.kind,pdf.filename,pdf.content)));
+    }catch(err){
+      if(err?.status)throw err;
+      throw httpError('บันทึกรายการ ว804 ไว้แล้ว แต่แนบ PDF ไม่สำเร็จ กรุณาลองแนบไฟล์อีกครั้ง');
+    }
   });
   const importInput=async body=>{
     if(typeof body?.original!=='string'||body.original.length>6990508||!/^[A-Za-z0-9+/]*={0,2}$/.test(body.original))throw httpError('เลือกไฟล์ Import ไม่เกิน 5 MB');
